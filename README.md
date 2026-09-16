@@ -1,6 +1,3 @@
-<p align="center">
-  <img src="assets/TauricResearch.png" style="width: 60%; height: auto;">
-</p>
 
 # Multi-Agent Trading System
 
