@@ -2,285 +2,44 @@
   <img src="assets/TauricResearch.png" style="width: 60%; height: auto;">
 </p>
 
----
-
 # Multi-Agent Trading System
 
-A research tool that turns "which stock should I look at today" into a repeatable, three-stage pipeline instead of a manual pick: a free quantitative screener narrows a basket down to a handful of quality names trading at a dip, a multi-agent LLM analysis (analysts → researchers → trader → risk team) does a full deep-dive on each shortlisted ticker, and a final Claude call compares the finalists' writeups and allocates to one. See [3-Agent Pipeline](#3-agent-pipeline-screener---deep-analysis---allocator) below for the full flow, or run a single-ticker deep-dive directly via `tradingagents analyze`.
+Fork of [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents), esteso con una pipeline a 3 agenti per scansionare un intero paniere di titoli invece di analizzarne uno alla volta.
 
-This project is built on top of the open-source [TradingAgents](https://github.com/TauricResearch/TradingAgents) multi-agent framework (Tauric Research) — the analyst/researcher/trader/risk-team architecture described below is theirs; the screener, deep-analysis orchestration, and allocator pipeline stages are this project's addition.
+> Strumento di ricerca, non consulenza finanziaria. Le performance variano in base a modello, temperatura, dati e altri fattori non deterministici.
 
-> This system is designed for research purposes. Trading performance may vary based on many factors, including the chosen backbone language models, model temperature, trading periods, the quality of data, and other non-deterministic factors. It is not intended as financial, investment, or trading advice.
+## Come funziona: 3 agenti in sequenza
 
-## Underlying TradingAgents Framework
+**Agente 1 — Screener** (`tradingagents/pipeline/screener.py`)
+Filtro quantitativo, nessuna chiamata LLM: scarta i titoli con fondamentali deboli (ROE, debito/equity, crescita ricavi, free cash flow) e tiene solo quelli scesi del 10-40% dal massimo a 6 mesi ma ancora sopra la media mobile a 200 giorni — un ribasso temporaneo su un titolo solido, non un trend strutturale in calo. Gratis e veloce.
 
-TradingAgents is a multi-agent trading framework that mirrors the dynamics of real-world trading firms. By deploying specialized LLM-powered agents: from fundamental analysts, sentiment experts, and technical analysts, to trader, risk management team, the platform collaboratively evaluates market conditions and informs trading decisions. Moreover, these agents engage in dynamic discussions to pinpoint the optimal strategy.
+**Agente 2 — Analisi approfondita** (`tradingagents/pipeline/deep_analysis.py`)
+Per ogni titolo passato allo screener, esegue in parallelo l'intera pipeline multi-agente di TradingAgents (analisti fondamentali/sentiment/news/tecnici → ricercatori bull/bear → trader → risk management → portfolio manager). Alla fine tiene solo i migliori per rating.
 
-<p align="center">
-  <img src="assets/schema.png" style="width: 100%; height: auto;">
-</p>
+**Agente 3 — Allocator** (`tradingagents/pipeline/allocator.py`)
+Un'unica chiamata a Claude che confronta i report dei finalisti dell'agente 2 e sceglie il titolo su cui allocare, motivando la scelta.
 
-The framework decomposes complex trading tasks into specialized roles.
-
-### Analyst Team
-- Fundamentals Analyst: Evaluates company financials and performance metrics, identifying intrinsic values and potential red flags.
-- Sentiment Analyst: Aggregates news headlines, StockTwits, and Reddit chatter into a single sentiment read to gauge short-term market mood.
-- News Analyst: Monitors global news and macroeconomic indicators, interpreting the impact of events on market conditions.
-- Technical Analyst: Utilizes technical indicators (like MACD and RSI) to detect trading patterns and forecast price movements.
-
-<p align="center">
-  <img src="assets/analyst.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-### Researcher Team
-- Comprises both bullish and bearish researchers who critically assess the insights provided by the Analyst Team. Through structured debates, they balance potential gains against inherent risks.
-
-<p align="center">
-  <img src="assets/researcher.png" width="70%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-### Trader Agent
-- Composes reports from the analysts and researchers to make informed trading decisions, determining the timing and magnitude of trades.
-
-<p align="center">
-  <img src="assets/trader.png" width="70%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-### Risk Management and Portfolio Manager
-- Continuously evaluates portfolio risk by assessing market volatility, liquidity, and other risk factors. The risk management team evaluates and adjusts trading strategies, providing assessment reports to the Portfolio Manager for final decision.
-- The Portfolio Manager approves/rejects the transaction proposal. If approved, the order will be sent to the simulated exchange and executed.
-
-<p align="center">
-  <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-## Installation and CLI
-
-### Installation
-
-Clone the repo:
-```bash
-git clone https://github.com/pigorg/multi-agent-trading-system.git
-cd multi-agent-trading-system
+```
+Paniere di ticker
+       │
+       ▼
+  Agente 1 (screener, gratis)  →  shortlist
+       │
+       ▼
+  Agente 2 (analisi multi-agente per ogni titolo)  →  finalisti
+       │
+       ▼
+  Agente 3 (Claude sceglie 1 titolo)  →  decisione finale
 ```
 
-Create a virtual environment in any of your favorite environment managers:
-```bash
-conda create -n tradingagents python=3.12
-conda activate tradingagents
-```
-
-Install the package and its dependencies:
-```bash
-pip install .
-```
-
-### Docker
-
-Alternatively, run with Docker:
-```bash
-cp .env.example .env  # add your API keys
-docker compose run --rm tradingagents
-```
-
-For local models with Ollama:
-```bash
-docker compose --profile ollama run --rm tradingagents-ollama
-```
-
-### Required APIs
-
-TradingAgents supports multiple LLM providers. Set the API key for your chosen provider:
+## Uso
 
 ```bash
-export OPENAI_API_KEY=...          # OpenAI (GPT)
-export GOOGLE_API_KEY=...          # Google (Gemini)
-export ANTHROPIC_API_KEY=...       # Anthropic (Claude)
-export XAI_API_KEY=...             # xAI (Grok)
-export DEEPSEEK_API_KEY=...        # DeepSeek
-export DASHSCOPE_API_KEY=...       # Qwen — International (dashscope-intl.aliyuncs.com)
-export DASHSCOPE_CN_API_KEY=...    # Qwen — China (dashscope.aliyuncs.com)
-export ZHIPU_API_KEY=...           # GLM via Z.AI (international)
-export ZHIPU_CN_API_KEY=...        # GLM via BigModel (China, open.bigmodel.cn)
-export MINIMAX_API_KEY=...         # MiniMax — Global (api.minimax.io)
-export MINIMAX_CN_API_KEY=...      # MiniMax — China (api.minimaxi.com)
-export OPENROUTER_API_KEY=...      # OpenRouter
-export ALPHA_VANTAGE_API_KEY=...   # Alpha Vantage
+tradingagents pipeline --show-basket   # mostra il paniere configurato, nessun costo
+tradingagents pipeline                 # run completo (chiede conferma: agenti 2/3 fanno chiamate LLM a pagamento)
+tradingagents pipeline --yes           # run completo senza conferma (per cron)
+
+tradingagents analyze                  # analisi singolo titolo (solo framework originale)
 ```
 
-For Azure OpenAI, copy `.env.enterprise.example` to `.env.enterprise` and fill in your credentials.
-
-For AWS Bedrock, install the extra with `pip install ".[bedrock]"`, set `llm_provider: "bedrock"`, configure AWS credentials (environment variables, `~/.aws/credentials`, or an IAM role) and `AWS_DEFAULT_REGION`, and use a Bedrock model ID, e.g. `us.anthropic.claude-opus-4-8-v1:0`.
-
-For local models, configure Ollama with `llm_provider: "ollama"`. The default endpoint is `http://localhost:11434/v1`; set `OLLAMA_BASE_URL` to point at a remote `ollama-serve`. Pull models with `ollama pull <name>`, and pick "Custom model ID" in the CLI for any model not listed by default.
-
-For any other OpenAI-compatible server (vLLM, LM Studio, llama.cpp, or a custom relay), use `llm_provider: "openai_compatible"` and set the endpoint via `backend_url` (or `TRADINGAGENTS_LLM_BACKEND_URL`), e.g. `http://localhost:8000/v1` for vLLM or `http://localhost:1234/v1` for LM Studio. The model is whatever your server serves. No key is needed for local servers; set `OPENAI_COMPATIBLE_API_KEY` when the endpoint requires one.
-
-Alternatively, copy `.env.example` to `.env` and fill in your keys:
-```bash
-cp .env.example .env
-```
-
-### CLI Usage
-
-Launch the interactive CLI:
-```bash
-tradingagents          # installed command
-python -m cli.main     # alternative: run directly from source
-```
-You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
-
-### Markets and tickers
-
-TradingAgents works with any market Yahoo Finance covers, using the exchange-suffixed ticker. Company identity and the alpha benchmark resolve automatically per market.
-
-- US: `AAPL`, `SPY`
-- Hong Kong: `0700.HK` · Tokyo: `7203.T` · London: `AZN.L`
-- India: `RELIANCE.NS`, `.BO` · Canada: `.TO` · Australia: `.AX`
-- China A-shares: Shanghai `.SS`, Shenzhen `.SZ` (e.g. `600519.SS` for Kweichow Moutai)
-- Crypto: `BTC-USD`, `ETH-USD`
-
-<p align="center">
-  <img src="assets/cli/cli_init.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-An interface will appear showing results as they load, letting you track the agent's progress as it runs.
-
-<p align="center">
-  <img src="assets/cli/cli_news.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-<p align="center">
-  <img src="assets/cli/cli_transaction.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-## TradingAgents Package
-
-### Implementation Details
-
-We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, DeepSeek, Qwen (Alibaba DashScope, international and China endpoints), GLM (Zhipu), MiniMax (global + China), OpenRouter, Ollama for local models, and Azure OpenAI for enterprise.
-
-### Python Usage
-
-To use TradingAgents inside your code, you can import the `tradingagents` module and initialize a `TradingAgentsGraph()` object. The `.propagate()` function will return a decision. You can run `main.py`, here's also a quick example:
-
-```python
-from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.default_config import DEFAULT_CONFIG
-
-ta = TradingAgentsGraph(debug=True, config=DEFAULT_CONFIG.copy())
-
-# forward propagate
-_, decision = ta.propagate("NVDA", "2026-01-15")
-print(decision)
-```
-
-You can also adjust the default configuration to set your own choice of LLMs, debate rounds, etc.
-
-```python
-from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.default_config import DEFAULT_CONFIG
-
-config = DEFAULT_CONFIG.copy()
-config["llm_provider"] = "openai"        # e.g. openai, google, anthropic, deepseek, groq, ollama; openai_compatible covers any OpenAI-compatible endpoint (vLLM, LM Studio, llama.cpp, ...)
-config["deep_think_llm"] = "gpt-5.6"      # Model for complex reasoning
-config["quick_think_llm"] = "gpt-5.6-luna" # Model for quick tasks
-config["max_debate_rounds"] = 2
-
-ta = TradingAgentsGraph(debug=True, config=config)
-_, decision = ta.propagate("NVDA", "2026-01-15")
-print(decision)
-```
-
-See `tradingagents/default_config.py` for all configuration options.
-
-## Persistence and Recovery
-
-TradingAgents persists two kinds of state across runs.
-
-### Decision log
-
-The decision log is always on. Each completed run appends its decision to `~/.tradingagents/memory/trading_memory.md`. On the next run for the same ticker, TradingAgents fetches the realised return (raw and alpha vs SPY), generates a one-paragraph reflection, and injects the most recent same-ticker decisions plus recent cross-ticker lessons into the Portfolio Manager prompt, so each analysis carries forward what worked and what didn't.
-
-Override the path with `TRADINGAGENTS_MEMORY_LOG_PATH`.
-
-### Checkpoint resume
-
-Checkpoint resume is opt-in via `--checkpoint`. When enabled, LangGraph saves state after each node so a crashed or interrupted run resumes from the last successful step instead of starting over. On a resume run you will see `Resuming from step N for <TICKER> on <date>` in the logs; on a new run you will see `Starting fresh`. Checkpoints are cleared automatically on successful completion.
-
-Per-ticker SQLite databases live at `~/.tradingagents/cache/checkpoints/<TICKER>.db` (override the base with `TRADINGAGENTS_CACHE_DIR`). Use `--clear-checkpoints` to reset all of them before a run.
-
-```bash
-tradingagents analyze --checkpoint           # enable for this run
-tradingagents analyze --clear-checkpoints    # reset before running
-```
-
-```python
-config = DEFAULT_CONFIG.copy()
-config["checkpoint_enabled"] = True
-ta = TradingAgentsGraph(config=config)
-_, decision = ta.propagate("NVDA", "2026-01-15")
-```
-
-## 3-Agent Pipeline (screener -> deep analysis -> allocator)
-
-`tradingagents pipeline` runs a 3-stage flow on top of the single-ticker `analyze` command, useful for scanning a basket instead of picking one ticker by hand, with an email report after each stage:
-
-1. **Screener (Agent 1)** — a quantitative, non-LLM filter (`tradingagents/pipeline/screener.py`) over a configurable basket: keeps tickers with solid fundamentals (ROE, debt/equity, revenue growth, positive free cash flow) that are down 10-40% from their 6-month high while still trading above their 200-day average (a dip, not a structural downtrend). Free and fast — no API cost.
-2. **Deep analysis (Agent 2)** — runs the existing `TradingAgentsGraph` (unmodified) on each shortlisted ticker in parallel, then narrows to the top finalists by their 5-tier rating (`tradingagents/pipeline/deep_analysis.py`).
-3. **Allocator (Agent 3)** — a single LLM call compares the finalists' trader/portfolio-manager writeups and picks one, with reasoning (`tradingagents/pipeline/allocator.py`).
-
-```bash
-tradingagents pipeline --show-basket   # print the configured basket, no run, no cost
-tradingagents pipeline                 # full run, asks for confirmation (Agents 2/3 make paid LLM calls)
-tradingagents pipeline --yes           # full run, no prompt (for cron/unattended use)
-tradingagents pipeline --date 2026-01-15
-```
-
-Or via Docker: `docker compose run --rm tradingagents-pipeline pipeline --yes` — see the `tradingagents-pipeline` service in `docker-compose.yml` for a cron-friendly one-shot invocation.
-
-Configuration (all optional, see `.env.example`): `TRADINGAGENTS_PIPELINE_BASKET`, `TRADINGAGENTS_SCREENER_MIN_ROE`, `TRADINGAGENTS_SCREENER_MAX_DEBT_TO_EQUITY`, `TRADINGAGENTS_SCREENER_MIN_DIP`/`_MAX_DIP`, `TRADINGAGENTS_SCREENER_TOP_N`, `TRADINGAGENTS_DEEP_ANALYSIS_TOP_N`, `TRADINGAGENTS_DEEP_ANALYSIS_WORKERS`. The allocator (Agent 3) always calls Claude (default `claude-sonnet-5` via `ANTHROPIC_API_KEY`) regardless of Agent 2's configured provider, since it's a single cheap call comparing already-written summaries — override with `TRADINGAGENTS_ALLOCATOR_LLM_PROVIDER`/`_MODEL`.
-
-Email delivery: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`, `REPORT_EMAIL_TO`. With `SMTP_HOST` unset, each stage's report is printed to stdout instead of emailed — useful for a first dry run.
-
-## Reproducibility
-
-TradingAgents is LLM-driven, so two runs of the same ticker and date can differ. This is expected for a research tool built on language models, not a defect. The variation comes from a few distinct sources, and it helps to separate them.
-
-Language model sampling is non-deterministic. Even at a fixed temperature, providers do not guarantee byte-identical output across calls, and reasoning models (the default GPT-5.x family, and any thinking-mode model) vary the most because their internal reasoning is itself sampled.
-
-Live data moves. News, StockTwits, and Reddit return different content as time passes, so a run today sees different inputs than a run last week even for the same historical trade date. Pin the analysis date to hold the price and indicator window fixed, but the social and news sources still reflect "now".
-
-To reduce variation you can lower the sampling temperature. Set `temperature` in your config (or `TRADINGAGENTS_TEMPERATURE` in `.env`); lower values make models that honor it more repeatable. The current curated models are reasoning-first and largely ignore temperature, so for tighter reproducibility use a non-reasoning model, which you can set explicitly via the Custom model ID option.
-
-```python
-config = DEFAULT_CONFIG.copy()
-config["llm_provider"] = "openai"
-config["temperature"] = 0.0
-# Reasoning models ignore temperature. For tighter reproducibility, set a
-# non-reasoning deep/quick model explicitly (e.g. via the Custom model ID option).
-```
-
-What does not vary anymore: the analyzed company identity is resolved deterministically from the ticker before any agent runs, and the market analyst grounds exact price and indicator claims in a verified data snapshot. Earlier reports of "different companies" or fabricated price levels across runs are addressed by these two mechanisms.
-
-Backtest results are not guaranteed to match any published figure. Returns depend on the model, the temperature, the date range, data quality, and the sampling above. Treat the framework as a research scaffold for studying multi-agent analysis, not as a strategy with a fixed, replicable return.
-
-## Contributing
-
-Contributions are welcome: bug fixes, documentation, and feature ideas; past contributions are credited per release in [`CHANGELOG.md`](CHANGELOG.md).
-
-## Citation
-
-Please reference our work if you find *TradingAgents* provides you with some help :)
-
-```
-@misc{xiao2025tradingagentsmultiagentsllmfinancial,
-      title={TradingAgents: Multi-Agents LLM Financial Trading Framework}, 
-      author={Yijia Xiao and Edward Sun and Di Luo and Wei Wang},
-      year={2025},
-      eprint={2412.20138},
-      archivePrefix={arXiv},
-      primaryClass={q-fin.TR},
-      url={https://arxiv.org/abs/2412.20138}, 
-}
-```
+Configurazione via variabili d'ambiente (paniere, soglie screener, provider/modello dell'allocator, SMTP per l'invio email dei report): vedi `.env.example`.
